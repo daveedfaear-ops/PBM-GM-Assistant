@@ -1,13 +1,15 @@
-
-
 import { GoogleGenAI, Part, Type, Modality } from "@google/genai";
 import { GameWorld, NewLocationData, NewNPCData, NewQuestData, NPC } from '../types';
 import { fileToGenerativePart } from '../utils/fileUtils';
+import { log } from './loggerService';
+import { base64ToBlobUrl } from "../utils/imageUtils";
 
 const MODEL_NAME = 'gemini-2.5-flash';
 
 if (!process.env.API_KEY) {
-    console.error("API_KEY environment variable not set.");
+    const errorMsg = "API_KEY environment variable not set.";
+    log(errorMsg, null, 'ERROR');
+    console.error(errorMsg);
 }
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
@@ -73,13 +75,16 @@ ${action}
 `;
 
     try {
+        log("Generating turn response...", { action });
         const response = await ai.models.generateContent({
             model: MODEL_NAME,
             contents: prompt,
         });
+        log("Turn response received.", response);
         return response.text;
     } catch (error) {
         console.error("Error calling Gemini API:", error);
+        log("Error generating turn response.", error, "ERROR");
         return "An error occurred while generating the response. The spirits of the digital realm are troubled. Please check your configuration and try again.";
     }
 };
@@ -233,6 +238,8 @@ export const generateQuests = (gameWorld: GameWorld): Promise<NewQuestData[]> =>
 
 export const generateNpcImage = async (npc: NPC): Promise<string> => {
     const prompt = `A detailed fantasy character portrait of ${npc.name}, who is described as: "${npc.description}". Epic, detailed, fantasy art style, vibrant colors. No text or watermarks.`;
+    log("Starting NPC image generation", { npcName: npc.name });
+    log("Image generation prompt", { prompt });
 
     try {
         const response = await ai.models.generateContent({
@@ -245,6 +252,18 @@ export const generateNpcImage = async (npc: NPC): Promise<string> => {
             },
         });
         
+        // Create a sanitized copy of the response to log, preventing memory crashes
+        // from huge base64 strings in the log viewer.
+        const loggedResponse = JSON.parse(JSON.stringify(response));
+        if (loggedResponse.candidates?.[0]?.content?.parts) {
+            for (const part of loggedResponse.candidates[0].content.parts) {
+                if (part.inlineData?.data) {
+                    part.inlineData.data = `[...base64 image data truncated, length: ${part.inlineData.data.length}]`;
+                }
+            }
+        }
+        log("Gemini API response received for image generation", loggedResponse);
+
         // Check for prompt-level safety blocks
         if (response.promptFeedback?.blockReason) {
             throw new Error(`Image generation blocked. Reason: ${response.promptFeedback.blockReason}`);
@@ -266,7 +285,9 @@ export const generateNpcImage = async (npc: NPC): Promise<string> => {
             for (const part of candidate.content.parts) {
                 if (part.inlineData?.data) {
                     const base64ImageBytes: string = part.inlineData.data;
-                    return `data:${part.inlineData.mimeType};base64,${base64ImageBytes}`;
+                    const imageUrl = base64ToBlobUrl(base64ImageBytes, part.inlineData.mimeType);
+                    log("Successfully created blob URL for NPC image.", { npcName: npc.name });
+                    return imageUrl;
                 }
             }
         }
@@ -274,9 +295,14 @@ export const generateNpcImage = async (npc: NPC): Promise<string> => {
         throw new Error("No image data found in the API response.");
 
     } catch (error) {
+        log("Error during image generation", error, 'ERROR');
         console.error("Error generating NPC image:", error);
         if (error instanceof Error) {
-            // Re-throw the specific error to be displayed in the UI
+            // Check for rate limiting, which often returns a 429 status code.
+            if (error.message.includes('429') || /rate limit/i.test(error.message)) {
+                throw new Error("Rate limit exceeded. Please wait a moment before generating more images.");
+            }
+            // Re-throw other specific errors to be displayed in the UI
             throw error;
         }
         // Fallback for non-Error exceptions

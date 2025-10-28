@@ -1,11 +1,13 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Player, View, GameWorld, AppState, Game } from './types';
+import { Player, View, GameWorld, AppState, Game, LogEntry } from './types';
 import Sidebar from './components/Sidebar';
 import GameWorldView from './components/GameWorldView';
 import PlayersView from './components/PlayersView';
 import PlayerDetailView from './components/PlayerDetailView';
 import CreateWorldModal from './components/CreateWorldModal';
 import { generateLoreFromFiles } from './services/geminiService';
+import * as logger from './services/loggerService';
+import DebugLogView from './components/DebugLogView';
 
 const STORAGE_KEY = 'PBM_GM_ASSISTANT_STATE';
 
@@ -55,6 +57,17 @@ const App: React.FC = () => {
   const [view, setView] = useState<View>(View.Players);
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [isCreateWorldModalOpen, setCreateWorldModalOpen] = useState(false);
+  const [isLogVisible, setLogVisible] = useState(false);
+  const [logEntries, setLogEntries] = useState<LogEntry[]>(logger.getLogs());
+
+
+  useEffect(() => {
+    logger.log("App initializing...");
+    const handleLogUpdate = (updatedLogs: LogEntry[]) => setLogEntries([...updatedLogs]);
+    logger.subscribe(handleLogUpdate);
+    
+    return () => logger.unsubscribe(handleLogUpdate);
+  }, []);
 
   // Load state from localStorage on initial render
   useEffect(() => {
@@ -63,6 +76,7 @@ const App: React.FC = () => {
       if (savedState) {
         const parsedState = JSON.parse(savedState);
         setAppState(parsedState);
+        logger.log("App state loaded from localStorage.", parsedState);
         // Ensure a player is selected if possible
         const activeGame = parsedState.games.find(g => g.id === parsedState.activeGameId);
         if (activeGame?.players.length > 0) {
@@ -72,9 +86,11 @@ const App: React.FC = () => {
         const initialState = getInitialState();
         setAppState(initialState);
         setSelectedPlayerId(initialState.games[0]?.players[0]?.id || null);
+        logger.log("No saved state found, initialized with default state.", initialState);
       }
     } catch (error) {
       console.error("Failed to load or parse state from localStorage:", error);
+      logger.log("Failed to load state from localStorage.", error, "ERROR");
       setAppState(getInitialState());
     }
   }, []);
@@ -108,7 +124,7 @@ const App: React.FC = () => {
         characterSheet: `Class: \nRace: \n\nInventory:\n\nBackstory:`,
         turnHistory: [],
       };
-      return {
+      const newState = {
         ...prev,
         games: prev.games.map(game =>
           game.id === prev.activeGameId
@@ -116,6 +132,8 @@ const App: React.FC = () => {
             : game
         ),
       };
+      logger.log("Player added", newPlayer);
+      return newState;
     });
   }, []);
 
@@ -149,11 +167,13 @@ const App: React.FC = () => {
 
   const handleSwitchGame = (gameId: string) => {
     if (gameId === appState.activeGameId) return;
+    logger.log(`Switched game from ${appState.activeGameId} to ${gameId}`);
     setAppState(prev => ({...prev, activeGameId: gameId }));
     setView(View.Players); // Default to players view on switch
   };
 
   const handleCreateNewGame = async (name: string, files: File[]) => {
+    logger.log("Creating new game...", { name, fileCount: files.length });
     let newLore = 'A new world awaits...';
     if (files.length > 0) {
       newLore = await generateLoreFromFiles(files);
@@ -169,6 +189,7 @@ const App: React.FC = () => {
       activeGameId: newGameId,
       games: [...prev.games, newGame],
     }));
+    logger.log("New game created", newGame);
     setCreateWorldModalOpen(false);
     setView(View.Players);
   };
@@ -191,8 +212,10 @@ const App: React.FC = () => {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
+        logger.log("Session state downloaded.");
     } catch (error) {
         console.error("Failed to save session:", error);
+        logger.log("Failed to download session state.", error, "ERROR");
         alert("An error occurred while trying to save the session.");
     }
   }, [appState]);
@@ -214,17 +237,20 @@ const App: React.FC = () => {
                 setAppState(loadedState);
                 setSelectedPlayerId(null); // Reset selection
                 setView(View.Players); // Go to a default view
+                logger.log("Session state loaded from file.", loadedState);
                 alert("Session loaded successfully!");
             } else {
                 throw new Error("Invalid session file format.");
             }
         } catch (error) {
             console.error("Failed to load session:", error);
+            logger.log("Failed to load session state from file.", error, "ERROR");
             alert("Failed to load session. The file may be corrupt or in an invalid format.");
         }
     };
     reader.onerror = () => {
         console.error("Error reading file.");
+        logger.log("Error reading session file.", null, "ERROR");
         alert("An error occurred while reading the file.");
     };
     reader.readAsText(file);
@@ -243,6 +269,7 @@ const App: React.FC = () => {
         onCreateNewGame={() => setCreateWorldModalOpen(true)}
         onDownloadState={handleDownloadState}
         onLoadState={handleLoadState}
+        onToggleLogView={() => setLogVisible(v => !v)}
       />
       <main className="flex-1 p-4 md:p-8 overflow-y-auto">
         <div className="max-w-4xl mx-auto">
@@ -284,6 +311,13 @@ const App: React.FC = () => {
         <CreateWorldModal
           onClose={() => setCreateWorldModalOpen(false)}
           onCreate={handleCreateNewGame}
+        />
+      )}
+       {isLogVisible && (
+        <DebugLogView
+          logs={logEntries}
+          onClose={() => setLogVisible(false)}
+          onClear={logger.clearLogs}
         />
       )}
     </div>

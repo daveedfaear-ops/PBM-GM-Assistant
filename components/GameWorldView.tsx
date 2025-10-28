@@ -3,6 +3,9 @@ import { GameWorld, NPC, Location, Quest } from '../types';
 import { generateAdventureHooks, generateNPCs, generateLocations, generateQuests, generateNpcImage } from '../services/geminiService';
 import D20Icon from './icons/D20Icon';
 import ImageIcon from './icons/ImageIcon';
+import { log } from '../services/loggerService';
+import DownloadIcon from './icons/DownloadIcon';
+import { blobToBase64 } from '../utils/imageUtils';
 
 interface GameWorldViewProps {
   gameWorld: GameWorld;
@@ -67,14 +70,50 @@ const NPCEditor = ({ gameWorld, onUpdate }: { gameWorld: GameWorld; onUpdate: (n
     const handleGenerateImage = async (npc: NPC) => {
         if (generatingImageId) return;
         setGeneratingImageId(npc.id);
+        log('UI: handleGenerateImage called for NPC', { npcId: npc.id, npcName: npc.name });
         try {
             const imageUrl = await generateNpcImage(npc);
             handleUpdateItem(npc.id, 'image', imageUrl);
         } catch (error) {
+            log('UI: Caught error in GameWorldView', error, 'ERROR');
             console.error("Failed to generate NPC image:", error);
-            alert("An error occurred while trying to generate the portrait.");
+            if (error instanceof Error) {
+                alert(error.message);
+            } else {
+                alert("An error occurred while trying to generate the portrait.");
+            }
         } finally {
             setGeneratingImageId(null);
+        }
+    };
+    
+    const handleDownloadNpc = async (npc: NPC) => {
+        try {
+            const npcToSave = { ...npc };
+
+            // If there's a blob URL, convert it back to a base64 data URL for export
+            if (npcToSave.image && npcToSave.image.startsWith('blob:')) {
+                const response = await fetch(npcToSave.image);
+                const blob = await response.blob();
+                npcToSave.image = await blobToBase64(blob);
+            }
+
+            const jsonString = JSON.stringify(npcToSave, null, 2);
+            const blob = new Blob([jsonString], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const safeFileName = npc.name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+            a.download = `npc_${safeFileName}.json`;
+            a.href = url;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            log("NPC data downloaded.", npcToSave);
+        } catch (error) {
+            console.error("Failed to download NPC data:", error);
+            log("Failed to download NPC data.", error, "ERROR");
+            alert("An error occurred while preparing the NPC for download.");
         }
     };
 
@@ -183,6 +222,14 @@ const NPCEditor = ({ gameWorld, onUpdate }: { gameWorld: GameWorld; onUpdate: (n
                                        ))}
                                    </select>
                                    <div className="flex items-center gap-2">
+                                        <button
+                                           onClick={() => handleDownloadNpc(item)}
+                                           className="flex items-center gap-1 text-xs bg-gray-600/50 text-gray-300 px-2 py-1 rounded-md hover:bg-gray-600/80 transition-colors"
+                                           title="Download NPC data"
+                                       >
+                                           <DownloadIcon className="h-3 w-3" />
+                                           <span>Save</span>
+                                       </button>
                                         <button 
                                            onClick={() => handleGenerateImage(item)}
                                            disabled={isGeneratingThisImage || !!generatingImageId}

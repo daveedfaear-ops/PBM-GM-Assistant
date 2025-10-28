@@ -72,3 +72,13 @@ export interface NewQuestData {
     title: string;
     description: string;
 }
+
+// Logging types
+export type LogLevel = 'INFO' | 'WARN' | 'ERROR';
+
+export interface LogEntry {
+  timestamp: string;
+  level: LogLevel;
+  message: string;
+  data?: any;
+}

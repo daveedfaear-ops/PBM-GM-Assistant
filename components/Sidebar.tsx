@@ -6,6 +6,7 @@ import UsersIcon from './icons/UsersIcon';
 import WorldSwitcher from './WorldSwitcher';
 import DownloadIcon from './icons/DownloadIcon';
 import UploadIcon from './icons/UploadIcon';
+import BugIcon from './icons/BugIcon';
 
 interface SidebarProps {
   activeView: View;
@@ -16,6 +17,7 @@ interface SidebarProps {
   onCreateNewGame: () => void;
   onDownloadState: () => void;
   onLoadState: (file: File) => void;
+  onToggleLogView: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
@@ -27,6 +29,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onCreateNewGame,
   onDownloadState,
   onLoadState,
+  onToggleLogView
 }) => {
   const navItems = [
     { view: View.Players, label: 'Players', icon: UsersIcon },
@@ -100,6 +103,13 @@ const Sidebar: React.FC<SidebarProps> = ({
             className="hidden"
             onChange={handleFileChange}
         />
+        <button
+            onClick={onToggleLogView}
+            className="w-full flex items-center gap-3 p-3 rounded-lg transition-colors text-gray-400 hover:bg-gray-800 hover:text-white"
+        >
+            <BugIcon className="h-6 w-6 flex-shrink-0" />
+            <span className="hidden md:block">Debug Log</span>
+        </button>
       </div>
     </nav>
   );

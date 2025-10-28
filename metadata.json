@@ -1,0 +1,5 @@
+{
+  "name": "PBM GM Assistant",
+  "description": "An AI-powered assistant for Play-By-Mail Game Masters to help manage game state, player actions, and generate narrative responses using the Gemini API.",
+  "requestFramePermissions": []
+}

@@ -1,4 +1,5 @@
 
+
 import { GoogleGenAI, Part, Type, Modality } from "@google/genai";
 import { GameWorld, NewLocationData, NewNPCData, NewQuestData, NPC } from '../types';
 import { fileToGenerativePart } from '../utils/fileUtils';
@@ -244,21 +245,41 @@ export const generateNpcImage = async (npc: NPC): Promise<string> => {
             },
         });
         
-        // Safely access the image data to prevent crashes on unexpected responses
+        // Check for prompt-level safety blocks
+        if (response.promptFeedback?.blockReason) {
+            throw new Error(`Image generation blocked. Reason: ${response.promptFeedback.blockReason}`);
+        }
+
         const candidate = response.candidates?.[0];
-        if (candidate && candidate.content && Array.isArray(candidate.content.parts)) {
+
+        // Check for candidate-level safety blocks or lack of a candidate
+        if (!candidate) {
+            throw new Error("No response candidate found. The model may not have generated an image.");
+        }
+        
+        if (candidate.finishReason && candidate.finishReason !== 'STOP') {
+             throw new Error(`Image generation failed. Reason: ${candidate.finishReason}`);
+        }
+        
+        // Safely access the image data
+        if (candidate.content && Array.isArray(candidate.content.parts)) {
             for (const part of candidate.content.parts) {
-                if (part.inlineData) {
+                if (part.inlineData?.data) {
                     const base64ImageBytes: string = part.inlineData.data;
                     return `data:${part.inlineData.mimeType};base64,${base64ImageBytes}`;
                 }
             }
         }
         
-        throw new Error("No image data found in API response.");
+        throw new Error("No image data found in the API response.");
 
     } catch (error) {
         console.error("Error generating NPC image:", error);
-        throw new Error("Failed to generate the character portrait.");
+        if (error instanceof Error) {
+            // Re-throw the specific error to be displayed in the UI
+            throw error;
+        }
+        // Fallback for non-Error exceptions
+        throw new Error("An unknown error occurred during image generation.");
     }
 };

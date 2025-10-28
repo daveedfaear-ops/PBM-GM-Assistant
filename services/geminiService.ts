@@ -1,5 +1,5 @@
-import { GoogleGenAI, Part } from "@google/genai";
-import { GameWorld } from '../types';
+import { GoogleGenAI, Part, Type } from "@google/genai";
+import { GameWorld, NewLocationData, NewNPCData, NewQuestData } from '../types';
 import { fileToGenerativePart } from '../utils/fileUtils';
 
 const MODEL_NAME = 'gemini-2.5-flash';
@@ -138,4 +138,93 @@ Extract key information and present it clearly. If there are inconsistencies, tr
         console.error("Error generating lore from files:", error);
         return "Error: Could not generate lore from the provided files. Please ensure they are supported formats (text, markdown, png, jpg) and try again.";
     }
+};
+
+/**
+ * Generic helper to generate game entities (NPCs, Locations, Quests).
+ */
+const generateEntity = async <T>(
+    gameWorld: GameWorld,
+    entityName: string,
+    promptText: string,
+    responseSchema: any
+): Promise<T[]> => {
+    const prompt = `
+You are a creative D&D Dungeon Master. Based on the provided game world state, ${promptText}.
+The output MUST be a JSON array of objects. Do not include markdown formatting.
+
+${serializeGameWorld(gameWorld)}
+
+--- NEW ${entityName.toUpperCase()}S (JSON Array) ---
+`;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: MODEL_NAME,
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.ARRAY,
+                    items: responseSchema,
+                },
+            },
+        });
+
+        const jsonString = response.text.trim();
+        const entities = JSON.parse(jsonString);
+        return Array.isArray(entities) ? entities : [];
+
+    } catch (error) {
+        console.error(`Error generating ${entityName}:`, error);
+        throw new Error(`Failed to generate ${entityName}.`);
+    }
+};
+
+export const generateNPCs = (gameWorld: GameWorld): Promise<NewNPCData[]> => {
+    return generateEntity<NewNPCData>(
+        gameWorld,
+        'NPCs',
+        "generate 2-3 new, interesting Non-Player Characters (NPCs). They should feel grounded in the world's lore.",
+        {
+            type: Type.OBJECT,
+            properties: {
+                name: { type: Type.STRING },
+                description: { type: Type.STRING },
+            },
+            required: ['name', 'description'],
+        }
+    );
+};
+
+export const generateLocations = (gameWorld: GameWorld): Promise<NewLocationData[]> => {
+    return generateEntity<NewLocationData>(
+        gameWorld,
+        'Locations',
+        "generate 2-3 new, interesting locations. They should feel grounded in the world's lore.",
+        {
+            type: Type.OBJECT,
+            properties: {
+                name: { type: Type.STRING },
+                description: { type: Type.STRING },
+            },
+            required: ['name', 'description'],
+        }
+    );
+};
+
+export const generateQuests = (gameWorld: GameWorld): Promise<NewQuestData[]> => {
+    return generateEntity<NewQuestData>(
+        gameWorld,
+        'Quests',
+        "generate 2-3 new, interesting quests. They should feel grounded in the world's lore and current plot points.",
+        {
+            type: Type.OBJECT,
+            properties: {
+                title: { type: Type.STRING },
+                description: { type: Type.STRING },
+            },
+            required: ['title', 'description'],
+        }
+    );
 };

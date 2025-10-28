@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { GameWorld, NPC, Location, Quest } from '../types';
-import { generateAdventureHooks } from '../services/geminiService';
+import { generateAdventureHooks, generateNPCs, generateLocations, generateQuests } from '../services/geminiService';
 import D20Icon from './icons/D20Icon';
 
 interface GameWorldViewProps {
@@ -15,6 +15,7 @@ const NPCEditor = ({ gameWorld, onUpdate }: { gameWorld: GameWorld; onUpdate: (n
     const [selectedLocationId, setSelectedLocationId] = useState<string | 'unassigned'>('unassigned');
     const [newItemName, setNewItemName] = useState('');
     const [newItemDesc, setNewItemDesc] = useState('');
+    const [isGenerating, setIsGenerating] = useState(false);
 
     const handleAddItem = (e: React.FormEvent) => {
         e.preventDefault();
@@ -41,6 +42,24 @@ const NPCEditor = ({ gameWorld, onUpdate }: { gameWorld: GameWorld; onUpdate: (n
 
     const handleDeleteItem = (id: string) => {
         onUpdate(gameWorld.npcs.filter(item => item.id !== id));
+    };
+
+    const handleGenerate = async () => {
+        setIsGenerating(true);
+        try {
+            const newNpcData = await generateNPCs(gameWorld);
+            const newNpcs: NPC[] = newNpcData.map((data, i) => ({
+                ...data,
+                id: `npc-${Date.now()}-${i}`,
+                locationId: selectedLocationId === 'unassigned' ? null : selectedLocationId,
+            }));
+            onUpdate([...gameWorld.npcs, ...newNpcs]);
+        } catch (error) {
+            console.error("Failed to generate NPCs:", error);
+            alert("An error occurred while trying to generate NPCs.");
+        } finally {
+            setIsGenerating(false);
+        }
     };
 
     const filteredNPCs = gameWorld.npcs.filter(npc => {
@@ -72,7 +91,19 @@ const NPCEditor = ({ gameWorld, onUpdate }: { gameWorld: GameWorld; onUpdate: (n
 
             {/* Add NPC Form */}
             <form onSubmit={handleAddItem} className="bg-gray-800/50 p-4 rounded-lg border border-gray-700 space-y-2">
-                <h3 className="text-lg font-semibold">Add New NPC to {selectedLocationId === 'unassigned' ? 'Unassigned' : gameWorld.locations.find(l => l.id === selectedLocationId)?.name}</h3>
+                 <div className="flex justify-between items-center mb-2">
+                    <h3 className="text-lg font-semibold">Add New NPC to {selectedLocationId === 'unassigned' ? 'Unassigned' : gameWorld.locations.find(l => l.id === selectedLocationId)?.name}</h3>
+                    <button
+                        type="button"
+                        onClick={handleGenerate}
+                        disabled={isGenerating}
+                        className="flex items-center gap-2 text-sm bg-indigo-600/50 text-indigo-300 px-3 py-1 rounded-md hover:bg-indigo-600/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Generate new NPCs with AI"
+                    >
+                        <D20Icon className={`h-4 w-4 ${isGenerating ? 'animate-spin' : ''}`} />
+                        <span>Generate</span>
+                    </button>
+                </div>
                 <input
                     type="text"
                     value={newItemName}
@@ -167,9 +198,9 @@ const GameWorldView: React.FC<GameWorldViewProps> = ({ gameWorld, onGameWorldCha
       case 'NPCs':
         return <NPCEditor gameWorld={gameWorld} onUpdate={(newNPCs) => handleUpdate('npcs', newNPCs)} />;
       case 'Locations':
-        return <EntityEditor type="Location" items={gameWorld.locations} onUpdate={(newLocs) => handleUpdate('locations', newLocs as Location[])} />;
+        return <EntityEditor type="Location" gameWorld={gameWorld} items={gameWorld.locations} onUpdate={(newLocs) => handleUpdate('locations', newLocs as Location[])} />;
       case 'Quests':
-        return <EntityEditor type="Quest" items={gameWorld.quests} onUpdate={(newQuests) => handleUpdate('quests', newQuests as Quest[])} />;
+        return <EntityEditor type="Quest" gameWorld={gameWorld} items={gameWorld.quests} onUpdate={(newQuests) => handleUpdate('quests', newQuests as Quest[])} />;
       case 'Hooks':
          return (
           <div>
@@ -230,9 +261,10 @@ const GameWorldView: React.FC<GameWorldViewProps> = ({ gameWorld, onGameWorldCha
 };
 
 // Generic component for editing lists of entities (Locations, etc.)
-const EntityEditor = <T extends { id: string; name?: string; title?: string; description: string; status?: 'Active' | 'Inactive' | 'Completed' }>({ type, items, onUpdate }: { type: string; items: T[]; onUpdate: (items: T[]) => void }) => {
+const EntityEditor = <T extends { id: string; name?: string; title?: string; description: string; status?: 'Active' | 'Inactive' | 'Completed' }>({ type, items, onUpdate, gameWorld }: { type: string; items: T[]; onUpdate: (items: T[]) => void, gameWorld: GameWorld }) => {
   const [newItemName, setNewItemName] = useState('');
   const [newItemDesc, setNewItemDesc] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const handleAddItem = (e: React.FormEvent) => {
     e.preventDefault();
@@ -266,11 +298,57 @@ const EntityEditor = <T extends { id: string; name?: string; title?: string; des
   const handleDeleteItem = (id: string) => {
     onUpdate(items.filter(item => item.id !== id));
   };
+  
+  const handleGenerate = async () => {
+    setIsGenerating(true);
+    try {
+        let newItemsData;
+        if (type === 'Location') {
+            newItemsData = await generateLocations(gameWorld);
+        } else if (type === 'Quest') {
+            newItemsData = await generateQuests(gameWorld);
+        }
+
+        if (newItemsData && newItemsData.length > 0) {
+            const newItems = (newItemsData as any[]).map((data, i) => {
+                const baseItem = {
+                    id: `${type.toLowerCase()}-${Date.now()}-${i}`,
+                    description: data.description,
+                };
+                if ('name' in data) {
+                    return { ...baseItem, name: data.name };
+                }
+                if ('title' in data) {
+                    return { ...baseItem, title: data.title, status: 'Active' };
+                }
+                return baseItem;
+            });
+            onUpdate([...items, ...newItems as T[]]);
+        }
+    } catch (error) {
+        console.error(`Failed to generate ${type}s:`, error);
+        alert(`An error occurred while trying to generate ${type}s.`);
+    } finally {
+        setIsGenerating(false);
+    }
+  };
 
   return (
     <div className="space-y-4">
       <form onSubmit={handleAddItem} className="bg-gray-800/50 p-4 rounded-lg border border-gray-700 space-y-2">
-        <h3 className="text-lg font-semibold">Add New {type}</h3>
+        <div className="flex justify-between items-center mb-2">
+            <h3 className="text-lg font-semibold">Add New {type}</h3>
+            <button
+                type="button"
+                onClick={handleGenerate}
+                disabled={isGenerating}
+                className="flex items-center gap-2 text-sm bg-indigo-600/50 text-indigo-300 px-3 py-1 rounded-md hover:bg-indigo-600/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title={`Generate new ${type}s with AI`}
+            >
+                <D20Icon className={`h-4 w-4 ${isGenerating ? 'animate-spin' : ''}`} />
+                <span>Generate</span>
+            </button>
+        </div>
         <input
           type="text"
           value={newItemName}

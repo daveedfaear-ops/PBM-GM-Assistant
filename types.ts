@@ -55,3 +55,19 @@ export enum View {
   GameWorld = 'GAME_WORLD',
   Players = 'PLAYERS',
 }
+
+// Data shapes for AI generation responses
+export interface NewNPCData {
+    name: string;
+    description: string;
+}
+
+export interface NewLocationData {
+    name: string;
+    description: string;
+}
+
+export interface NewQuestData {
+    title: string;
+    description: string;
+}

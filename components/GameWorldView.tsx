@@ -10,6 +10,128 @@ interface GameWorldViewProps {
 
 type Tab = 'Lore' | 'NPCs' | 'Locations' | 'Quests' | 'Hooks';
 
+// Component for managing NPCs by location
+const NPCEditor = ({ gameWorld, onUpdate }: { gameWorld: GameWorld; onUpdate: (npcs: NPC[]) => void }) => {
+    const [selectedLocationId, setSelectedLocationId] = useState<string | 'unassigned'>('unassigned');
+    const [newItemName, setNewItemName] = useState('');
+    const [newItemDesc, setNewItemDesc] = useState('');
+
+    const handleAddItem = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newItemName.trim() || !newItemDesc.trim()) return;
+
+        const newNPC: NPC = {
+            id: `npc-${Date.now()}`,
+            name: newItemName,
+            description: newItemDesc,
+            locationId: selectedLocationId === 'unassigned' ? null : selectedLocationId,
+        };
+
+        onUpdate([...gameWorld.npcs, newNPC]);
+        setNewItemName('');
+        setNewItemDesc('');
+    };
+
+    const handleUpdateItem = (id: string, field: keyof NPC, value: string | null) => {
+        const updatedItems = gameWorld.npcs.map(item =>
+            item.id === id ? { ...item, [field]: value } : item
+        );
+        onUpdate(updatedItems);
+    };
+
+    const handleDeleteItem = (id: string) => {
+        onUpdate(gameWorld.npcs.filter(item => item.id !== id));
+    };
+
+    const filteredNPCs = gameWorld.npcs.filter(npc => {
+        if (selectedLocationId === 'unassigned') {
+            return !npc.locationId;
+        }
+        return npc.locationId === selectedLocationId;
+    });
+
+    return (
+        <div className="space-y-4">
+            {/* Location Selector Dropdown */}
+            <div className="mb-4">
+                <label htmlFor="location-select" className="block text-sm font-medium text-gray-400 mb-1">
+                    Show NPCs At Location
+                </label>
+                <select
+                    id="location-select"
+                    value={selectedLocationId}
+                    onChange={(e) => setSelectedLocationId(e.target.value)}
+                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                >
+                    <option value="unassigned">Unassigned</option>
+                    {gameWorld.locations.map(loc => (
+                        <option key={loc.id} value={loc.id}>{loc.name}</option>
+                    ))}
+                </select>
+            </div>
+
+            {/* Add NPC Form */}
+            <form onSubmit={handleAddItem} className="bg-gray-800/50 p-4 rounded-lg border border-gray-700 space-y-2">
+                <h3 className="text-lg font-semibold">Add New NPC to {selectedLocationId === 'unassigned' ? 'Unassigned' : gameWorld.locations.find(l => l.id === selectedLocationId)?.name}</h3>
+                <input
+                    type="text"
+                    value={newItemName}
+                    onChange={(e) => setNewItemName(e.target.value)}
+                    placeholder="NPC Name"
+                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                />
+                <textarea
+                    value={newItemDesc}
+                    onChange={(e) => setNewItemDesc(e.target.value)}
+                    placeholder="Description"
+                    className="w-full h-24 bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none resize-y"
+                />
+                <button type="submit" className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-500 transition-colors w-full">
+                    Add NPC
+                </button>
+            </form>
+
+            {/* NPC List */}
+            <div className="space-y-3">
+                {filteredNPCs.length > 0 ? filteredNPCs.map(item => (
+                    <div key={item.id} className="bg-gray-800 p-3 rounded-lg border border-gray-700">
+                        <input
+                            type="text"
+                            value={item.name}
+                            onChange={(e) => handleUpdateItem(item.id, 'name', e.target.value)}
+                            className="text-lg font-bold bg-transparent focus:outline-none focus:bg-gray-700 rounded px-1 w-full text-indigo-400"
+                        />
+                        <textarea
+                            value={item.description}
+                            onChange={(e) => handleUpdateItem(item.id, 'description', e.target.value)}
+                            className="w-full text-sm bg-transparent focus:outline-none focus:bg-gray-700 rounded px-1 mt-1 text-gray-400 resize-y"
+                            rows={2}
+                        />
+                         <div className="flex justify-between items-center mt-2">
+                            <select
+                                value={item.locationId || 'unassigned'}
+                                onChange={(e) => handleUpdateItem(item.id, 'locationId', e.target.value === 'unassigned' ? null : e.target.value)}
+                                className="bg-gray-700 text-xs rounded px-2 py-1 focus:outline-none text-gray-300"
+                                title="Move NPC to another location"
+                            >
+                                <option value="unassigned">Unassigned</option>
+                                {gameWorld.locations.map(loc => (
+                                    <option key={loc.id} value={loc.id}>{loc.name}</option>
+                                ))}
+                            </select>
+                            <button onClick={() => handleDeleteItem(item.id)} className="text-red-500 hover:text-red-400 text-xs">Delete</button>
+                        </div>
+                    </div>
+                )) : (
+                    <div className="text-center py-6">
+                        <p className="text-gray-500">No NPCs in this location.</p>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
 const GameWorldView: React.FC<GameWorldViewProps> = ({ gameWorld, onGameWorldChange }) => {
   const [activeTab, setActiveTab] = useState<Tab>('Lore');
   const [hooks, setHooks] = useState<string[]>([]);
@@ -42,9 +164,8 @@ const GameWorldView: React.FC<GameWorldViewProps> = ({ gameWorld, onGameWorldCha
             />
           </>
         );
-      // A generic entity manager component would be better, but this is fine for now
       case 'NPCs':
-        return <EntityEditor type="NPC" items={gameWorld.npcs} onUpdate={(newNPCs) => handleUpdate('npcs', newNPCs as NPC[])} />;
+        return <NPCEditor gameWorld={gameWorld} onUpdate={(newNPCs) => handleUpdate('npcs', newNPCs)} />;
       case 'Locations':
         return <EntityEditor type="Location" items={gameWorld.locations} onUpdate={(newLocs) => handleUpdate('locations', newLocs as Location[])} />;
       case 'Quests':
@@ -108,7 +229,7 @@ const GameWorldView: React.FC<GameWorldViewProps> = ({ gameWorld, onGameWorldCha
   );
 };
 
-// Generic component for editing lists of entities (NPCs, Locations, etc.)
+// Generic component for editing lists of entities (Locations, etc.)
 const EntityEditor = <T extends { id: string; name?: string; title?: string; description: string; status?: 'Active' | 'Inactive' | 'Completed' }>({ type, items, onUpdate }: { type: string; items: T[]; onUpdate: (items: T[]) => void }) => {
   const [newItemName, setNewItemName] = useState('');
   const [newItemDesc, setNewItemDesc] = useState('');

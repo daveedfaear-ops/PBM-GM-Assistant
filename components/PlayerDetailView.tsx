@@ -57,7 +57,7 @@ const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, gameState, 
     } finally {
       setIsLoading(false);
     }
-  }, [currentAction, gameState, characterSheet, player, onUpdatePlayer]);
+  }, [currentAction, gameState, characterSheet, onUpdatePlayer, player]);
 
   return (
     <div className="space-y-8 animate-fade-in">

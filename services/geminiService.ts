@@ -1,5 +1,6 @@
-import { GoogleGenAI } from "@google/genai";
-import { GameWorld, Player } from '../types';
+import { GoogleGenAI, Part } from "@google/genai";
+import { GameWorld } from '../types';
+import { fileToGenerativePart } from '../utils/fileUtils';
 
 const MODEL_NAME = 'gemini-2.5-flash';
 
@@ -111,5 +112,30 @@ ${serializeGameWorld(gameWorld)}
     } catch (error) {
         console.error("Error generating adventure hooks:", error);
         return ["Failed to generate adventure hooks. The muse is silent."];
+    }
+};
+
+export const generateLoreFromFiles = async (files: File[]): Promise<string> => {
+    const prompt = `You are a world-building assistant for a fantasy roleplaying game. The user has uploaded the following files containing notes, images, and documents about their world.
+Synthesize all of this information into a cohesive and well-structured "World Lore" document.
+This document should serve as the foundational context for a new game campaign.
+Structure it with clear headings for different sections like History, Key Factions, Important Locations, and Major Plot Points.
+The tone should be evocative and engaging, suitable for a fantasy setting.
+Extract key information and present it clearly. If there are inconsistencies, try to merge them logically or present them as 'conflicting historical accounts'.`;
+
+    try {
+        const fileParts: Part[] = await Promise.all(
+            files.map(file => fileToGenerativePart(file))
+        );
+        
+        const response = await ai.models.generateContent({
+            model: MODEL_NAME,
+            contents: { parts: [{ text: prompt }, ...fileParts] },
+        });
+
+        return response.text;
+    } catch (error) {
+        console.error("Error generating lore from files:", error);
+        return "Error: Could not generate lore from the provided files. Please ensure they are supported formats (text, markdown, png, jpg) and try again.";
     }
 };

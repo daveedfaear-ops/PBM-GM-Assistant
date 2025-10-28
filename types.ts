@@ -16,6 +16,7 @@ export interface NPC {
   id: string;
   name: string;
   description: string;
+  locationId?: string | null;
 }
 
 export interface Location {
@@ -38,6 +39,17 @@ export interface GameWorld {
   quests: Quest[];
 }
 
+export interface Game {
+  id: string;
+  name: string;
+  gameWorld: GameWorld;
+  players: Player[];
+}
+
+export interface AppState {
+  games: Game[];
+  activeGameId: string | null;
+}
 
 export enum View {
   GameWorld = 'GAME_WORLD',

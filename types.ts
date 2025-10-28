@@ -17,6 +17,7 @@ export interface NPC {
   name: string;
   description: string;
   locationId?: string | null;
+  image?: string;
 }
 
 export interface Location {

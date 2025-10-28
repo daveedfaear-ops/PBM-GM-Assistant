@@ -1,5 +1,6 @@
-import { GoogleGenAI, Part, Type } from "@google/genai";
-import { GameWorld, NewLocationData, NewNPCData, NewQuestData } from '../types';
+
+import { GoogleGenAI, Part, Type, Modality } from "@google/genai";
+import { GameWorld, NewLocationData, NewNPCData, NewQuestData, NPC } from '../types';
 import { fileToGenerativePart } from '../utils/fileUtils';
 
 const MODEL_NAME = 'gemini-2.5-flash';
@@ -227,4 +228,37 @@ export const generateQuests = (gameWorld: GameWorld): Promise<NewQuestData[]> =>
             required: ['title', 'description'],
         }
     );
+};
+
+export const generateNpcImage = async (npc: NPC): Promise<string> => {
+    const prompt = `A detailed fantasy character portrait of ${npc.name}, who is described as: "${npc.description}". Epic, detailed, fantasy art style, vibrant colors. No text or watermarks.`;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-image',
+            contents: {
+                parts: [{ text: prompt }],
+            },
+            config: {
+                responseModalities: [Modality.IMAGE],
+            },
+        });
+        
+        // Safely access the image data to prevent crashes on unexpected responses
+        const candidate = response.candidates?.[0];
+        if (candidate && candidate.content && Array.isArray(candidate.content.parts)) {
+            for (const part of candidate.content.parts) {
+                if (part.inlineData) {
+                    const base64ImageBytes: string = part.inlineData.data;
+                    return `data:${part.inlineData.mimeType};base64,${base64ImageBytes}`;
+                }
+            }
+        }
+        
+        throw new Error("No image data found in API response.");
+
+    } catch (error) {
+        console.error("Error generating NPC image:", error);
+        throw new Error("Failed to generate the character portrait.");
+    }
 };

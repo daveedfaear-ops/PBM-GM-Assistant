@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { GameWorld, NPC, Location, Quest } from '../types';
-import { generateAdventureHooks, generateNPCs, generateLocations, generateQuests } from '../services/geminiService';
+import { generateAdventureHooks, generateNPCs, generateLocations, generateQuests, generateNpcImage } from '../services/geminiService';
 import D20Icon from './icons/D20Icon';
+import ImageIcon from './icons/ImageIcon';
 
 interface GameWorldViewProps {
   gameWorld: GameWorld;
@@ -16,6 +17,7 @@ const NPCEditor = ({ gameWorld, onUpdate }: { gameWorld: GameWorld; onUpdate: (n
     const [newItemName, setNewItemName] = useState('');
     const [newItemDesc, setNewItemDesc] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
+    const [generatingImageId, setGeneratingImageId] = useState<string | null>(null);
 
     const handleAddItem = (e: React.FormEvent) => {
         e.preventDefault();
@@ -59,6 +61,20 @@ const NPCEditor = ({ gameWorld, onUpdate }: { gameWorld: GameWorld; onUpdate: (n
             alert("An error occurred while trying to generate NPCs.");
         } finally {
             setIsGenerating(false);
+        }
+    };
+
+    const handleGenerateImage = async (npc: NPC) => {
+        if (generatingImageId) return;
+        setGeneratingImageId(npc.id);
+        try {
+            const imageUrl = await generateNpcImage(npc);
+            handleUpdateItem(npc.id, 'image', imageUrl);
+        } catch (error) {
+            console.error("Failed to generate NPC image:", error);
+            alert("An error occurred while trying to generate the portrait.");
+        } finally {
+            setGeneratingImageId(null);
         }
     };
 
@@ -124,36 +140,65 @@ const NPCEditor = ({ gameWorld, onUpdate }: { gameWorld: GameWorld; onUpdate: (n
 
             {/* NPC List */}
             <div className="space-y-3">
-                {filteredNPCs.length > 0 ? filteredNPCs.map(item => (
-                    <div key={item.id} className="bg-gray-800 p-3 rounded-lg border border-gray-700">
-                        <input
-                            type="text"
-                            value={item.name}
-                            onChange={(e) => handleUpdateItem(item.id, 'name', e.target.value)}
-                            className="text-lg font-bold bg-transparent focus:outline-none focus:bg-gray-700 rounded px-1 w-full text-indigo-400"
-                        />
-                        <textarea
-                            value={item.description}
-                            onChange={(e) => handleUpdateItem(item.id, 'description', e.target.value)}
-                            className="w-full text-sm bg-transparent focus:outline-none focus:bg-gray-700 rounded px-1 mt-1 text-gray-400 resize-y"
-                            rows={2}
-                        />
-                         <div className="flex justify-between items-center mt-2">
-                            <select
-                                value={item.locationId || 'unassigned'}
-                                onChange={(e) => handleUpdateItem(item.id, 'locationId', e.target.value === 'unassigned' ? null : e.target.value)}
-                                className="bg-gray-700 text-xs rounded px-2 py-1 focus:outline-none text-gray-300"
-                                title="Move NPC to another location"
-                            >
-                                <option value="unassigned">Unassigned</option>
-                                {gameWorld.locations.map(loc => (
-                                    <option key={loc.id} value={loc.id}>{loc.name}</option>
-                                ))}
-                            </select>
-                            <button onClick={() => handleDeleteItem(item.id)} className="text-red-500 hover:text-red-400 text-xs">Delete</button>
-                        </div>
-                    </div>
-                )) : (
+                {filteredNPCs.length > 0 ? filteredNPCs.map(item => {
+                    const isGeneratingThisImage = generatingImageId === item.id;
+                    return (
+                       <div key={item.id} className="bg-gray-800 p-4 rounded-lg border border-gray-700 flex flex-col md:flex-row gap-4">
+                           <div className="w-full md:w-32 h-32 bg-gray-900 rounded flex-shrink-0 flex items-center justify-center relative overflow-hidden">
+                               {item.image && !isGeneratingThisImage && (
+                                   <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                               )}
+                               {!item.image && !isGeneratingThisImage && (
+                                   <ImageIcon className="w-12 h-12 text-gray-600" />
+                               )}
+                               {isGeneratingThisImage && (
+                                   <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                                       <D20Icon className="w-8 h-8 text-indigo-400 animate-spin" />
+                                   </div>
+                               )}
+                           </div>
+                           <div className="flex-grow">
+                               <input
+                                   type="text"
+                                   value={item.name}
+                                   onChange={(e) => handleUpdateItem(item.id, 'name', e.target.value)}
+                                   className="text-lg font-bold bg-transparent focus:outline-none focus:bg-gray-700 rounded px-1 w-full text-indigo-400"
+                               />
+                               <textarea
+                                   value={item.description}
+                                   onChange={(e) => handleUpdateItem(item.id, 'description', e.target.value)}
+                                   className="w-full text-sm bg-transparent focus:outline-none focus:bg-gray-700 rounded px-1 mt-1 text-gray-400 resize-y"
+                                   rows={3}
+                               />
+                               <div className="flex justify-between items-center mt-2 flex-wrap gap-2">
+                                   <select
+                                       value={item.locationId || 'unassigned'}
+                                       onChange={(e) => handleUpdateItem(item.id, 'locationId', e.target.value === 'unassigned' ? null : e.target.value)}
+                                       className="bg-gray-700 text-xs rounded px-2 py-1 focus:outline-none text-gray-300"
+                                       title="Move NPC to another location"
+                                   >
+                                       <option value="unassigned">Unassigned</option>
+                                       {gameWorld.locations.map(loc => (
+                                           <option key={loc.id} value={loc.id}>{loc.name}</option>
+                                       ))}
+                                   </select>
+                                   <div className="flex items-center gap-2">
+                                        <button 
+                                           onClick={() => handleGenerateImage(item)}
+                                           disabled={isGeneratingThisImage || !!generatingImageId}
+                                           className="flex items-center gap-1 text-xs bg-teal-600/50 text-teal-300 px-2 py-1 rounded-md hover:bg-teal-600/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                           title="Generate portrait with AI"
+                                       >
+                                           <ImageIcon className={`h-3 w-3 ${isGeneratingThisImage ? 'animate-pulse' : ''}`} />
+                                           <span>{isGeneratingThisImage ? 'Generating...' : 'Gen. Portrait'}</span>
+                                       </button>
+                                       <button onClick={() => handleDeleteItem(item.id)} className="text-red-500 hover:text-red-400 text-xs">Delete</button>
+                                   </div>
+                               </div>
+                           </div>
+                       </div>
+                    )
+                }) : (
                     <div className="text-center py-6">
                         <p className="text-gray-500">No NPCs in this location.</p>
                     </div>
